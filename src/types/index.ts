@@ -19,6 +19,7 @@ export interface Order {
   personIds?: string[]; // Used for 'single'
   tax?: number; // percentage
   serviceCharge?: number; // percentage
+  exchangeRate?: number; // multiplier for price
 }
 
 export interface BillState {

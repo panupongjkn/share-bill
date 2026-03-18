@@ -23,9 +23,10 @@ export const calculateTotals = (state: BillState): CalculatedTotals => {
   state.orders.forEach(order => {
     let orderSubtotal = 0;
     const orderPersonSubtotals: Record<string, number> = {};
+    const rate = order.exchangeRate || 1;
     
     if (order.type === 'single') {
-      orderSubtotal = order.price || 0;
+      orderSubtotal = (order.price || 0) * rate;
       const personIds = order.personIds || [];
       if (personIds.length > 0) {
         const splitPrice = orderSubtotal / personIds.length;
@@ -36,9 +37,10 @@ export const calculateTotals = (state: BillState): CalculatedTotals => {
     } else {
       // Calculate subtotal for this multiple order
       order.subOrders.forEach(sub => {
-        orderSubtotal += sub.price;
+        const itemPriceConverted = sub.price * rate;
+        orderSubtotal += itemPriceConverted;
         if (sub.personIds.length > 0) {
-          const splitPrice = sub.price / sub.personIds.length;
+          const splitPrice = itemPriceConverted / sub.personIds.length;
           sub.personIds.forEach(pid => {
             orderPersonSubtotals[pid] = (orderPersonSubtotals[pid] || 0) + splitPrice;
           });
