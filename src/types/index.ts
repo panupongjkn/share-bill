@@ -14,11 +14,11 @@ export interface Order {
   id: string;
   name: string;
   subOrders: SubOrder[];
+  tax?: number; // percentage
+  serviceCharge?: number; // percentage
 }
 
 export interface BillState {
   people: Person[];
   orders: Order[];
-  tax?: number; // percentage
-  serviceCharge?: number; // percentage
 }

@@ -8,9 +8,7 @@ import { calculateTotals } from '@/utils/calculations';
 
 const initialState: BillState = {
   people: [],
-  orders: [],
-  tax: 0,
-  serviceCharge: 0
+  orders: []
 };
 
 type ModalState = 
@@ -55,6 +53,12 @@ const WarningIcon = () => (
   </svg>
 );
 
+const ChevronDownIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="6 9 12 15 18 9"></polyline>
+  </svg>
+);
+
 export default function Home() {
   return (
     <Suspense fallback={<div>Loading...</div>}>
@@ -72,6 +76,8 @@ function BillApp() {
   // Modal Input States
   const [modalName, setModalName] = useState('');
   const [modalPrice, setModalPrice] = useState('');
+  const [modalTax, setModalTax] = useState('');
+  const [modalServiceCharge, setModalServiceCharge] = useState('');
 
   const modalInputRef = useRef<HTMLInputElement>(null);
 
@@ -103,15 +109,21 @@ function BillApp() {
     if (m?.type === 'edit-order') {
       const order = state.orders.find(o => o.id === m.id);
       setModalName(order?.name || '');
+      setModalTax(order?.tax?.toString() || '0');
+      setModalServiceCharge(order?.serviceCharge?.toString() || '0');
       setModalPrice('');
     } else if (m?.type === 'edit-sub-order') {
       const order = state.orders.find(o => o.id === m.orderId);
       const sub = order?.subOrders.find(so => so.id === m.id);
       setModalName(sub?.name || '');
       setModalPrice(sub?.price.toString() || '');
+      setModalTax('');
+      setModalServiceCharge('');
     } else {
       setModalName('');
       setModalPrice('');
+      setModalTax('');
+      setModalServiceCharge('');
     }
     setModal(m);
   }, [state.orders]);
@@ -120,6 +132,8 @@ function BillApp() {
     setModal(null);
     setModalName('');
     setModalPrice('');
+    setModalTax('');
+    setModalServiceCharge('');
   }, []);
 
   const totals = useMemo(() => calculateTotals(state), [state]);
@@ -148,15 +162,15 @@ function BillApp() {
 
   const addOrder = useCallback((name: string) => {
     if (!name.trim()) return;
-    const newOrder: Order = { id: crypto.randomUUID(), name: name.trim(), subOrders: [] };
+    const newOrder: Order = { id: crypto.randomUUID(), name: name.trim(), subOrders: [], tax: 0, serviceCharge: 0 };
     setState(prev => ({ ...prev, orders: [...prev.orders, newOrder] }));
     closeModal();
   }, [closeModal]);
 
-  const updateOrder = useCallback((id: string, name: string) => {
+  const updateOrder = useCallback((id: string, name: string, tax: number, serviceCharge: number) => {
     setState(prev => ({
       ...prev,
-      orders: prev.orders.map(o => o.id === id ? { ...o, name: name.trim() } : o)
+      orders: prev.orders.map(o => o.id === id ? { ...o, name: name.trim(), tax, serviceCharge } : o)
     }));
     closeModal();
   }, [closeModal]);
@@ -272,7 +286,7 @@ function BillApp() {
     } else if (modal.type === 'order') {
       addOrder(modalName);
     } else if (modal.type === 'edit-order') {
-      updateOrder(modal.id, modalName);
+      updateOrder(modal.id, modalName, parseFloat(modalTax || '0'), parseFloat(modalServiceCharge || '0'));
     } else if (modal.type === 'sub-order') {
       const price = parseFloat(modalPrice || '0');
       addSubOrder(modal.orderId, modalName, price);
@@ -316,12 +330,13 @@ function BillApp() {
                 <h3>
                   {modal.type === 'person' && 'Add Person'}
                   {modal.type === 'order' && 'Add New Order'}
-                  {modal.type === 'edit-order' && 'Edit Order'}
+                  {modal.type === 'edit-order' && 'Edit Order Adjustment'}
                   {modal.type === 'sub-order' && 'Add Item'}
                   {modal.type === 'edit-sub-order' && 'Edit Item'}
                 </h3>
                 <form onSubmit={handleModalSubmit}>
                   <div className="flex-col">
+                    <label>Name</label>
                     <input 
                       ref={modalInputRef}
                       type="text" 
@@ -334,13 +349,36 @@ function BillApp() {
                       }
                     />
                     {(modal.type === 'sub-order' || modal.type === 'edit-sub-order') && (
-                      <input 
-                        type="number" 
-                        step="0.01"
-                        value={modalPrice}
-                        onChange={(e) => setModalPrice(e.target.value)}
-                        placeholder="Price"
-                      />
+                      <>
+                        <label>Price</label>
+                        <input 
+                          type="number" 
+                          step="0.01"
+                          value={modalPrice}
+                          onChange={(e) => setModalPrice(e.target.value)}
+                          placeholder="Price"
+                        />
+                      </>
+                    )}
+                    {modal.type === 'edit-order' && (
+                      <div className="grid-cols-2">
+                        <div>
+                          <label>Service Charge (%)</label>
+                          <input 
+                            type="number" 
+                            value={modalServiceCharge} 
+                            onChange={(e) => setModalServiceCharge(e.target.value)}
+                          />
+                        </div>
+                        <div>
+                          <label>Tax (%)</label>
+                          <input 
+                            type="number" 
+                            value={modalTax} 
+                            onChange={(e) => setModalTax(e.target.value)}
+                          />
+                        </div>
+                      </div>
                     )}
                   </div>
                   <div className="modal-actions">
@@ -369,6 +407,25 @@ function BillApp() {
             <button className="btn-primary" onClick={() => openModal({ type: 'order' })}>+ Add Order</button>
           </div>
         </div>
+
+        {/* Mobile only Tag list right under header */}
+        {state.people.length > 0 && (
+          <div className="mobile-only" style={{ marginBottom: '1.5rem', padding: '0 0.25rem' }}>
+            <div className="flex-row" style={{ flexWrap: 'wrap', gap: '6px' }}>
+              {state.people.map(p => (
+                <span key={p.id} className="person-chip" style={{ background: 'white', border: '1px solid var(--border)', fontSize: '0.8rem', padding: '4px 10px' }}>
+                  {p.name}
+                  <button 
+                    onClick={() => openModal({ type: 'confirm-delete', target: 'person', id: p.id, name: p.name })}
+                    style={{ background: 'none', color: '#dc3545', padding: '0 0 0 6px', fontSize: '0.9rem', border: 'none', cursor: 'pointer' }}
+                  >
+                    &times;
+                  </button>
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Desktop Table View */}
         <div className="table-container desktop-only">
@@ -414,14 +471,38 @@ function BillApp() {
                 </tr>
               )}
               {state.orders.map((order, orderIndex) => {
-                const orderTotal = order.subOrders.reduce((sum, so) => sum + so.price, 0);
+                const orderSubtotal = order.subOrders.reduce((sum, so) => sum + so.price, 0);
+                const orderSC = orderSubtotal * ((order.serviceCharge || 0) / 100);
+                const orderTax = (orderSubtotal + orderSC) * ((order.tax || 0) / 100);
+                const orderTotal = orderSubtotal + orderSC + orderTax;
                 const isOrderIncomplete = order.subOrders.some(so => so.personIds.length === 0);
+                const hasAdjustments = (order.tax || 0) + (order.serviceCharge || 0) > 0;
+
+                // Calculate individual totals for this specific order
+                const orderPersonSubtotals: Record<string, number> = {};
+                order.subOrders.forEach(sub => {
+                  if (sub.personIds.length > 0) {
+                    const splitPrice = sub.price / sub.personIds.length;
+                    sub.personIds.forEach(pid => {
+                      orderPersonSubtotals[pid] = (orderPersonSubtotals[pid] || 0) + splitPrice;
+                    });
+                  }
+                });
+                
                 return (
                   <React.Fragment key={order.id}>
                     <tr className="order-group-row">
                       <td>
                         <div className="flex-col" style={{ gap: 0 }}>
-                          <span style={{ fontWeight: 700 }}>{order.name}</span>
+                          <div className="flex-row">
+                            <span style={{ fontWeight: 700 }}>{order.name}</span>
+                            {(order.tax || order.serviceCharge) ? (
+                              <span style={{ fontSize: '0.7rem', color: 'var(--primary)', background: '#e7f3ff', padding: '2px 6px', borderRadius: '4px' }}>
+                                {order.serviceCharge ? `SC ${order.serviceCharge}% ` : ''}
+                                {order.tax ? `Tax ${order.tax}%` : ''}
+                              </span>
+                            ) : null}
+                          </div>
                           {isOrderIncomplete && (
                             <div className="unassigned-warning" style={{ marginLeft: '0.25rem' }}>
                               <WarningIcon /> Not complete
@@ -429,11 +510,43 @@ function BillApp() {
                           )}
                         </div>
                       </td>
-                      <td className="order-total-cell">{orderTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                      {state.people.map(p => <td key={p.id}></td>)}
+                      <td className="order-total-cell">
+                        <div className="flex-col" style={{ alignItems: 'center', gap: 0 }}>
+                          <div style={{ fontSize: hasAdjustments ? '0.8rem' : '1rem', opacity: hasAdjustments ? 0.7 : 1 }}>
+                            {orderSubtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </div>
+                          {hasAdjustments && (
+                            <div style={{ fontSize: '0.9rem', color: 'var(--primary)', fontWeight: 700 }}>
+                              {orderTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                      {state.people.map(p => {
+                        const personBaseShare = orderPersonSubtotals[p.id] || 0;
+                        let personOrderTotal = 0;
+                        if (orderSubtotal > 0) {
+                          const shareRatio = personBaseShare / orderSubtotal;
+                          personOrderTotal = personBaseShare + (orderSC * shareRatio) + (orderTax * shareRatio);
+                        }
+                        return (
+                          <td key={p.id} style={{ textAlign: 'center', color: 'var(--primary)' }}>
+                            <div className="flex-col" style={{ alignItems: 'center', gap: 0 }}>
+                              <div style={{ fontSize: hasAdjustments ? '0.7rem' : '0.75rem', opacity: hasAdjustments ? 0.7 : 1, fontWeight: hasAdjustments ? 400 : 600 }}>
+                                {personBaseShare > 0 ? personBaseShare.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00'}
+                              </div>
+                              {hasAdjustments && (
+                                <div style={{ fontSize: '0.75rem', fontWeight: 700 }}>
+                                  {personOrderTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                        );
+                      })}
                       <td className="col-action">
                         <div className="flex-row" style={{ justifyContent: 'center', gap: '4px' }}>
-                          <button className="btn-icon" style={{ color: '#007bff' }} onClick={() => openModal({ type: 'edit-order', id: order.id })} title="Edit order"><EditIcon /></button>
+                          <button className="btn-icon" style={{ color: '#007bff' }} onClick={() => openModal({ type: 'edit-order', id: order.id })} title="Edit order / adjustments"><EditIcon /></button>
                           <button className="btn-icon" style={{ color: '#6c757d' }} disabled={orderIndex === 0} onClick={() => moveOrder(order.id, 'up')} title="Move up"><UpIcon /></button>
                           <button className="btn-icon" style={{ color: '#6c757d' }} disabled={orderIndex === state.orders.length - 1} onClick={() => moveOrder(order.id, 'down')} title="Move down"><DownIcon /></button>
                           <button className="btn-icon" onClick={() => openModal({ type: 'confirm-delete', target: 'order', id: order.id, name: order.name })} title="Delete order"><TrashIcon /></button>
@@ -442,6 +555,10 @@ function BillApp() {
                     </tr>
                     {order.subOrders.map((sub, subIndex) => {
                       const isUnassigned = sub.personIds.length === 0;
+                      const itemSC = sub.price * ((order.serviceCharge || 0) / 100);
+                      const itemTax = (sub.price + itemSC) * ((order.tax || 0) / 100);
+                      const itemTotalWithAdjustments = sub.price + itemSC + itemTax;
+
                       return (
                         <tr key={sub.id} className={`sub-order-row ${isUnassigned ? 'unassigned' : ''}`}>
                           <td style={{ paddingLeft: '2rem' }}>
@@ -454,7 +571,18 @@ function BillApp() {
                               )}
                             </div>
                           </td>
-                          <td className="cell-price">{sub.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                          <td className="cell-price">
+                            <div className="flex-col" style={{ alignItems: 'flex-end', gap: 0 }}>
+                              <div style={{ fontSize: hasAdjustments ? '0.8rem' : '1rem', opacity: hasAdjustments ? 0.7 : 1 }}>
+                                {sub.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </div>
+                              {hasAdjustments && (
+                                <div style={{ fontSize: '0.8rem', color: 'var(--primary)', fontWeight: 700 }}>
+                                  {itemTotalWithAdjustments.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </div>
+                              )}
+                            </div>
+                          </td>
                           {state.people.map(p => (
                             <td key={p.id} className={`check-cell ${sub.personIds.includes(p.id) ? 'active' : ''}`} onClick={() => togglePersonInSubOrder(order.id, sub.id, p.id)}>
                               {sub.personIds.includes(p.id) ? '●' : '○'}
@@ -480,24 +608,6 @@ function BillApp() {
                 );
               })}
             </tbody>
-            <tfoot>
-              <tr style={{ fontWeight: 800, background: '#f8f9fa' }}>
-                <td>Subtotal</td>
-                <td className="cell-price">{totals.subtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                {state.people.map(p => {
-                  const personSubtotal = state.orders.reduce((sum, o) => {
-                    return sum + o.subOrders.reduce((subSum, sub) => {
-                      if (sub.personIds.includes(p.id)) {
-                        return subSum + (sub.price / sub.personIds.length);
-                      }
-                      return subSum;
-                    }, 0);
-                  }, 0);
-                  return <td key={p.id} style={{ textAlign: 'center' }}>{personSubtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>;
-                })}
-                <td className="col-action"></td>
-              </tr>
-            </tfoot>
           </table>
         </div>
 
@@ -507,28 +617,56 @@ function BillApp() {
             <div style={{ textAlign: 'center', padding: '2rem', color: '#999' }}>No orders added yet.</div>
           )}
           {state.orders.map((order, orderIndex) => {
-            const orderTotal = order.subOrders.reduce((sum, so) => sum + so.price, 0);
+            const orderSubtotal = order.subOrders.reduce((sum, so) => sum + so.price, 0);
+            const orderSC = orderSubtotal * ((order.serviceCharge || 0) / 100);
+            const orderTax = (orderSubtotal + orderSC) * ((order.tax || 0) / 100);
+            const orderTotal = orderSubtotal + orderSC + orderTax;
             const isOrderIncomplete = order.subOrders.some(so => so.personIds.length === 0);
+            const hasAdjustments = (order.tax || 0) + (order.serviceCharge || 0) > 0;
+
             return (
               <div key={order.id} className="mobile-order-card">
-                <div className="mobile-order-header">
-                  <div className="flex-col" style={{ gap: '2px' }}>
+                <div className="mobile-order-header" style={{ flexDirection: 'column', gap: '12px', alignItems: 'stretch' }}>
+                  <div className="flex-row" style={{ justifyContent: 'space-between', width: '100%' }}>
                     <div className="flex-row">
-                      <strong>{order.name}</strong>
+                      <strong style={{ fontSize: '1.1rem' }}>{order.name}</strong>
                       <button className="btn-icon" style={{ color: '#007bff' }} onClick={() => openModal({ type: 'edit-order', id: order.id })}><EditIcon /></button>
                     </div>
-                    <span style={{ fontSize: '0.8rem', color: 'var(--secondary)' }}>Total: {orderTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                    {isOrderIncomplete && <div className="unassigned-warning"><WarningIcon /> Not complete</div>}
+                    <div className="flex-row">
+                      <button className="btn-icon" style={{ color: '#6c757d' }} disabled={orderIndex === 0} onClick={() => moveOrder(order.id, 'up')}><UpIcon /></button>
+                      <button className="btn-icon" style={{ color: '#6c757d' }} disabled={orderIndex === state.orders.length - 1} onClick={() => moveOrder(order.id, 'down')}><DownIcon /></button>
+                      <button className="btn-icon" onClick={() => openModal({ type: 'confirm-delete', target: 'order', id: order.id, name: order.name })}><TrashIcon /></button>
+                    </div>
                   </div>
-                  <div className="flex-row">
-                    <button className="btn-icon" style={{ color: '#6c757d' }} disabled={orderIndex === 0} onClick={() => moveOrder(order.id, 'up')}><UpIcon /></button>
-                    <button className="btn-icon" style={{ color: '#6c757d' }} disabled={orderIndex === state.orders.length - 1} onClick={() => moveOrder(order.id, 'down')}><DownIcon /></button>
-                    <button className="btn-icon" onClick={() => openModal({ type: 'confirm-delete', target: 'order', id: order.id, name: order.name })}><TrashIcon /></button>
+                  <div className="flex-row" style={{ flexWrap: 'wrap', gap: '16px', borderTop: '1px solid #e9ecef', paddingTop: '8px' }}>
+                    <div className="flex-col" style={{ gap: 0 }}>
+                      <span style={{ fontSize: '0.8rem', opacity: hasAdjustments ? 0.7 : 1 }}>
+                        Subtotal: {orderSubtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                      {hasAdjustments && (
+                        <span style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--primary)' }}>
+                          Final: {orderTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex-row" style={{ gap: '8px', alignSelf: 'center' }}>
+                      {(order.tax || order.serviceCharge) ? (
+                        <span style={{ fontSize: '0.7rem', color: 'var(--primary)', background: '#e7f3ff', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>
+                          {order.serviceCharge ? `SC ${order.serviceCharge}% ` : ''}
+                          {order.tax ? `Tax ${order.tax}%` : ''}
+                        </span>
+                      ) : null}
+                      {isOrderIncomplete && <div className="unassigned-warning"><WarningIcon /> Not complete</div>}
+                    </div>
                   </div>
                 </div>
                 <div>
                   {order.subOrders.map((sub, subIndex) => {
                     const isUnassigned = sub.personIds.length === 0;
+                    const itemSC = sub.price * ((order.serviceCharge || 0) / 100);
+                    const itemTax = (sub.price + itemSC) * ((order.tax || 0) / 100);
+                    const itemTotalWithAdjustments = sub.price + itemSC + itemTax;
+
                     return (
                       <div key={sub.id} className={`mobile-item-card ${isUnassigned ? 'unassigned' : ''}`}>
                         <div className="mobile-item-header">
@@ -537,7 +675,16 @@ function BillApp() {
                               <span>{sub.name}</span>
                               <button className="btn-icon" style={{ color: '#007bff', padding: '2px' }} onClick={() => openModal({ type: 'edit-sub-order', orderId: order.id, id: sub.id })}><EditIcon /></button>
                             </div>
-                            <span style={{ fontWeight: 700 }}>{sub.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                            <div className="flex-col" style={{ gap: 0 }}>
+                              <span style={{ fontSize: '0.8rem', opacity: hasAdjustments ? 0.7 : 1, fontWeight: hasAdjustments ? 400 : 700 }}>
+                                {sub.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </span>
+                              {hasAdjustments && (
+                                <span style={{ fontWeight: 700, color: 'var(--primary)' }}>
+                                  {itemTotalWithAdjustments.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </span>
+                              )}
+                            </div>
                             {isUnassigned && <div className="unassigned-warning"><WarningIcon /> Not assigned</div>}
                           </div>
                           <div className="flex-row">
@@ -570,57 +717,115 @@ function BillApp() {
         </div>
       </section>
 
-      <div className="grid-cols-2" style={{ marginTop: '1.5rem' }}>
-        <section className="card">
-          <h2>Adjustment</h2>
-          <div className="grid-cols-2">
-            <div>
-              <label>Service Charge (%)</label>
-              <input 
-                type="number" 
-                value={state.serviceCharge || 0} 
-                onChange={(e) => setState(prev => ({ ...prev, serviceCharge: parseFloat(e.target.value) || 0 }))}
-              />
-            </div>
-            <div>
-              <label>Tax (%)</label>
-              <input 
-                type="number" 
-                value={state.tax || 0} 
-                onChange={(e) => setState(prev => ({ ...prev, tax: parseFloat(e.target.value) || 0 }))}
-              />
-            </div>
-          </div>
-        </section>
+      <section className="card">
+        <h2>Summary</h2>
+        <div className="flex-col">
+          {state.people.map(p => {
+            const groupedItems: { orderName: string, tax: number, sc: number, items: { subName: string, price: number, sharedWith: number }[] }[] = [];
+            
+            state.orders.forEach(o => {
+              const itemsForPerson = o.subOrders
+                .filter(so => so.personIds.includes(p.id))
+                .map(so => ({
+                  subName: so.name,
+                  price: so.price,
+                  sharedWith: so.personIds.length
+                }));
+              
+              if (itemsForPerson.length > 0) {
+                groupedItems.push({
+                  orderName: o.name,
+                  tax: o.tax || 0,
+                  sc: o.serviceCharge || 0,
+                  items: itemsForPerson
+                });
+              }
+            });
 
-        <section className="card">
-          <h2>Summary</h2>
-          <div className="flex-col">
-            {state.people.map(p => (
-              <div key={p.id} className="total-row">
-                <span>{p.name}</span>
-                <span>{totals.personTotals[p.id].toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-              </div>
-            ))}
-            <div className="total-row">
-              <span>Total Bill</span>
-              <span>{totals.total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-            </div>
+            return (
+              <details key={p.id} className="person-summary-details">
+                <summary>
+                  <span>{p.name}</span>
+                  <div className="flex-row">
+                    <span>{totals.personTotals[p.id].toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    <ChevronDownIcon />
+                  </div>
+                </summary>
+                <div className="person-summary-content">
+                  {groupedItems.length === 0 ? (
+                    <p style={{ color: '#999', fontStyle: 'italic' }}>No items assigned.</p>
+                  ) : (
+                    <React.Fragment>
+                      {groupedItems.map((group, gIdx) => {
+                        const orderBaseSubtotal = group.items.reduce((sum, item) => sum + (item.price / item.sharedWith), 0);
+                        const scAmount = orderBaseSubtotal * (group.sc / 100);
+                        const taxAmount = (orderBaseSubtotal + scAmount) * (group.tax / 100);
+                        const orderTotalWithAdjustments = orderBaseSubtotal + scAmount + taxAmount;
+
+                        return (
+                          <div key={gIdx} style={{ marginBottom: '1rem' }}>
+                            <div className="summary-order-group-header">
+                              {group.orderName}
+                            </div>
+                            {group.items.map((item, idx) => (
+                              <div key={idx} className="summary-item-row">
+                                <span>{item.subName} {item.sharedWith > 1 && <small>(Shared by {item.sharedWith})</small>}</span>
+                                <span className="cell-price">
+                                  {(item.price / item.sharedWith).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </span>
+                              </div>
+                            ))}
+                            {group.sc > 0 && (
+                              <div className="summary-item-row" style={{ fontStyle: 'italic', fontSize: '0.8rem', borderTop: '1px dashed #dee2e6', marginTop: '4px', paddingTop: '4px' }}>
+                                <span>Service Charge ({group.sc}%)</span>
+                                <span className="cell-price">{scAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                              </div>
+                            )}
+                            {group.tax > 0 && (
+                              <div className="summary-item-row" style={{ fontStyle: 'italic', fontSize: '0.8rem' }}>
+                                <span>Tax ({group.tax}%)</span>
+                                <span className="cell-price">{taxAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                              </div>
+                            )}
+                            <div className="summary-item-row" style={{ fontWeight: 600, fontSize: '0.85rem' }}>
+                              <span>Total</span>
+                              <span className="cell-price">
+                                {orderTotalWithAdjustments.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                      <div className="summary-item-subtotal summary-item-row" style={{ borderTop: '2px solid var(--border)', marginTop: '1rem', paddingTop: '1rem' }}>
+                        <span>Total</span>
+                        <span className="cell-price">
+                          {totals.personTotals[p.id].toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                    </React.Fragment>
+                  )}
+                </div>
+              </details>
+            );
+          })}
+          <div className="total-row" style={{ marginTop: '1rem', borderTop: '2px solid var(--border)', paddingTop: '1rem' }}>
+            <span>Total Bill</span>
+            <span>{totals.total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
           </div>
-          
-          <button 
-            className="btn-primary" 
-            style={{ width: '100%', marginTop: '1rem' }}
-            onClick={() => {
-              const url = window.location.href;
-              navigator.clipboard.writeText(url);
-              alert('Link copied to clipboard!');
-            }}
-          >
-            Copy Shareable Link
-          </button>
-        </section>
-      </div>
+        </div>
+        
+        <button 
+          className="btn-primary" 
+          style={{ width: '100%', marginTop: '1rem' }}
+          onClick={() => {
+            const url = window.location.href;
+            navigator.clipboard.writeText(url);
+            alert('Link copied to clipboard!');
+          }}
+        >
+          Copy Shareable Link
+        </button>
+      </section>
     </main>
   );
 }

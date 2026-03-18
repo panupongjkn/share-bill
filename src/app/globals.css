@@ -195,8 +195,60 @@ button {
   font-size: 1rem;
 }
 
-.total-row:not(:last-child) {
+.person-summary-details {
   border-bottom: 1px solid #f0f2f5;
+}
+
+.person-summary-details summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 0.75rem 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 500;
+}
+
+.person-summary-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.person-summary-content {
+  padding: 0.5rem 1rem 1rem 1rem;
+  background: #f8f9fa;
+  border-radius: 8px;
+  margin-bottom: 0.75rem;
+  font-size: 0.9rem;
+}
+
+.summary-order-group-header {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--primary);
+  margin-top: 1rem;
+  margin-bottom: 0.5rem;
+  border-bottom: 1px solid #dee2e6;
+  padding-bottom: 2px;
+}
+
+.summary-order-group-header:first-child {
+  margin-top: 0;
+}
+
+.summary-item-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 0;
+  color: var(--secondary);
+}
+
+.summary-item-subtotal {
+  border-top: 1px solid var(--border);
+  margin-top: 8px;
+  padding-top: 8px;
+  font-weight: 600;
+  color: var(--foreground);
 }
 
 .unassigned-warning {
@@ -213,7 +265,7 @@ button {
   font-weight: 700;
   color: var(--secondary);
   background: #f8f9fa;
-  text-align: right;
+  text-align: center;
 }
 
 .sub-order-row.unassigned {
@@ -321,7 +373,7 @@ th, td {
 }
 
 .col-item { min-width: 200px; }
-.col-price { width: 120px; text-align: right; }
+.col-price { width: 120px; text-align: center; }
 .col-person { width: 80px; text-align: center; }
 .col-action { width: 1px; white-space: nowrap; text-align: center; }
 
