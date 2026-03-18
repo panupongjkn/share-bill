@@ -74,7 +74,7 @@ h2 {
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.1);
 }
 
-input[type="text"], input[type="number"] {
+input[type="text"], input[type="number"], input[type="password"] {
   border: 2px solid var(--border);
   border-radius: 8px;
   padding: 0.75rem 1rem;

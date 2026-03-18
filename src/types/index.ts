@@ -25,4 +25,6 @@ export interface Order {
 export interface BillState {
   people: Person[];
   orders: Order[];
+  password?: string; // Optional password for Edit Mode
+  isEditMode?: boolean; // Save current mode to URL
 }
