@@ -13,7 +13,10 @@ export interface SubOrder {
 export interface Order {
   id: string;
   name: string;
-  subOrders: SubOrder[];
+  type: 'multiple' | 'single';
+  subOrders: SubOrder[]; // Used for 'multiple'
+  price?: number; // Used for 'single'
+  personIds?: string[]; // Used for 'single'
   tax?: number; // percentage
   serviceCharge?: number; // percentage
 }
