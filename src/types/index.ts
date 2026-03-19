@@ -20,6 +20,7 @@ export interface Order {
   tax?: number; // percentage
   serviceCharge?: number; // percentage
   exchangeRate?: number; // multiplier for price
+  collapsed?: boolean; // UI state for collapsing multiple items
 }
 
 export interface BillState {

@@ -66,6 +66,12 @@ const ChevronDownIcon = (props: React.SVGProps<SVGSVGElement>) => (
   </svg>
 );
 
+const ChevronRightIcon = (props: React.SVGProps<SVGSVGElement>) => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <polyline points="9 18 15 12 9 6"></polyline>
+  </svg>
+);
+
 const LockIcon = (props: React.SVGProps<SVGSVGElement>) => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
     <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
@@ -260,6 +266,13 @@ function BillApp() {
     }
   };
 
+  const toggleOrderCollapse = (orderId: string) => {
+    setState(prev => ({
+      ...prev,
+      orders: prev.orders.map(o => o.id === orderId ? { ...o, collapsed: !o.collapsed } : o)
+    }));
+  };
+
   const addPerson = useCallback((name: string) => {
     if (!name.trim()) return;
     const newPerson: Person = { id: crypto.randomUUID(), name: name.trim() };
@@ -288,7 +301,7 @@ function BillApp() {
     const newOrder: Order = { 
       id: crypto.randomUUID(), name: name.trim(), type, subOrders: [], 
       price: type === 'single' ? price : 0, personIds: [],
-      tax, serviceCharge, exchangeRate: rate
+      tax, serviceCharge, exchangeRate: rate, collapsed: false
     };
     setState(prev => ({ ...prev, orders: [...prev.orders, newOrder] }));
     closeModal();
@@ -719,13 +732,22 @@ function BillApp() {
                         }
                       });
                     }
+                    const isCollapsed = !!order.collapsed;
+
                     return (
                       <React.Fragment key={order.id}>
                         <tr className="order-group-row">
                           <td>
                             <div className="flex-col" style={{ gap: 0 }}>
                               <div className="flex-row">
-                                <span style={{ fontWeight: 700 }}>{order.name}</span>
+                                {order.type === 'multiple' && (
+                                  <button className="btn-icon" onClick={() => toggleOrderCollapse(order.id)} style={{ color: 'inherit', padding: 0 }}>
+                                    {isCollapsed ? <ChevronRightIcon /> : <ChevronDownIcon />}
+                                  </button>
+                                )}
+                                <span style={{ fontWeight: 700, cursor: order.type === 'multiple' ? 'pointer' : 'default' }} onClick={() => order.type === 'multiple' && toggleOrderCollapse(order.id)}>
+                                  {order.name}
+                                </span>
                                 {order.type === 'single' && <span style={{ fontSize: '0.6rem', background: '#eee', padding: '2px 4px', borderRadius: '3px', color: '#666' }}>SINGLE</span>}
                                 {(order.tax || order.serviceCharge || rate !== 1) && (
                                   <div className="flex-row" style={{ gap: '4px', flexWrap: 'wrap' }}>
@@ -775,7 +797,7 @@ function BillApp() {
                             </td>
                           )}
                         </tr>
-                        {order.type === 'multiple' && (
+                        {!isCollapsed && order.type === 'multiple' && (
                           <React.Fragment>
                             {order.subOrders.map((sub, subIndex) => {
                               const isUnassigned = sub.personIds.length === 0;
@@ -839,11 +861,17 @@ function BillApp() {
                 const orderTotal = orderSubtotal + orderSC + orderTax;
                 const isOrderIncomplete = order.type === 'single' ? (!order.personIds || order.personIds.length === 0) : order.subOrders.some(so => so.personIds.length === 0);
                 const hasAdjustments = (order.tax || 0) + (order.serviceCharge || 0) > 0 || rate !== 1;
+                const isCollapsed = !!order.collapsed;
+
                 return (
                   <div key={order.id} className="mobile-order-card">
                     <div className="mobile-order-header" style={{ flexDirection: 'column', gap: '12px', alignItems: 'stretch' }}>
                       <div className="flex-row" style={{ justifyContent: 'space-between', width: '100%' }}>
-                        <div className="flex-row"><strong style={{ fontSize: '1.1rem' }}>{order.name}</strong>{isEditMode && <button className="btn-icon" style={{ color: '#007bff' }} onClick={() => openModal({ type: 'edit-order', id: order.id })}><EditIcon /></button>}</div>
+                        <div className="flex-row" onClick={() => order.type === 'multiple' && toggleOrderCollapse(order.id)} style={{ cursor: order.type === 'multiple' ? 'pointer' : 'default' }}>
+                          {order.type === 'multiple' && (isCollapsed ? <ChevronRightIcon /> : <ChevronDownIcon />)}
+                          <strong style={{ fontSize: '1.1rem' }}>{order.name}</strong>
+                          {isEditMode && <button className="btn-icon" style={{ color: '#007bff' }} onClick={(e) => { e.stopPropagation(); openModal({ type: 'edit-order', id: order.id }); }}><EditIcon /></button>}
+                        </div>
                         {isEditMode && (
                           <div className="flex-row"><button className="btn-icon" style={{ color: '#6c757d' }} disabled={orderIndex === 0} onClick={() => moveOrder(order.id, 'up')}><UpIcon /></button><button className="btn-icon" style={{ color: '#6c757d' }} disabled={orderIndex === state.orders.length - 1} onClick={() => moveOrder(order.id, 'down')}><DownIcon /></button><button className="btn-icon" onClick={() => openModal({ type: 'confirm-delete', target: 'order', id: order.id, name: order.name })}><TrashIcon /></button></div>
                         )}
@@ -858,38 +886,40 @@ function BillApp() {
                         </div>
                       </div>
                     </div>
-                    <div>
-                      {order.type === 'single' ? (
-                        <div className="mobile-item-card" style={{ borderBottom: 'none' }}><label style={{ fontSize: '0.7rem', textTransform: 'uppercase', marginBottom: '0.5rem', display: 'block' }}>Split with:</label><div className="mobile-person-grid">{state.people.map(p => <button key={p.id} className={`mobile-person-toggle ${order.personIds?.includes(p.id) ? 'active' : ''}`} onClick={() => isEditMode && togglePersonInSingleOrder(order.id, p.id)} style={{ cursor: isEditMode ? 'pointer' : 'default', opacity: !isEditMode && !order.personIds?.includes(p.id) ? 0.3 : 1 }}>{p.name}</button>)}</div></div>
-                      ) : (
-                        <React.Fragment>
-                          {order.subOrders.map((sub, subIndex) => {
-                            const isUnassigned = sub.personIds.length === 0;
-                            const subPriceConverted = sub.price * rate;
-                            const itemSC = subPriceConverted * ((order.serviceCharge || 0) / 100);
-                            const itemTax = (subPriceConverted + itemSC) * ((order.tax || 0) / 100);
-                            const itemTotalWithAdjustments = subPriceConverted + itemSC + itemTax;
-                            return (
-                              <div key={sub.id} className={`mobile-item-card ${isUnassigned ? 'unassigned' : ''}`}>
-                                <div className="mobile-item-header">
-                                  <div className="flex-col" style={{ gap: '2px' }}>
-                                    <div className="flex-row"><span>{sub.name}</span>{isEditMode && <button className="btn-icon" style={{ color: '#007bff', padding: '2px' }} onClick={() => openModal({ type: 'edit-sub-order', orderId: order.id, id: sub.id })}><EditIcon /></button>}</div>
-                                    {rate !== 1 && <small style={{ color: '#999', fontSize: '0.7rem' }}>Orig: {sub.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</small>}
-                                    <div className="flex-col" style={{ gap: 0, marginTop: '4px' }}><span style={{ fontSize: '0.8rem', opacity: hasAdjustments ? 0.7 : 1, fontWeight: hasAdjustments ? 400 : 700 }}>{subPriceConverted.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>{hasAdjustments && <span style={{ fontWeight: 700, color: 'var(--primary)' }}>{itemTotalWithAdjustments.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>}</div>
-                                    {isUnassigned && <div className="unassigned-warning"><WarningIcon /> Not assigned</div>}
+                    {!isCollapsed && (
+                      <div>
+                        {order.type === 'single' ? (
+                          <div className="mobile-item-card" style={{ borderBottom: 'none' }}><label style={{ fontSize: '0.7rem', textTransform: 'uppercase', marginBottom: '0.5rem', display: 'block' }}>Split with:</label><div className="mobile-person-grid">{state.people.map(p => <button key={p.id} className={`mobile-person-toggle ${order.personIds?.includes(p.id) ? 'active' : ''}`} onClick={() => isEditMode && togglePersonInSingleOrder(order.id, p.id)} style={{ cursor: isEditMode ? 'pointer' : 'default', opacity: !isEditMode && !order.personIds?.includes(p.id) ? 0.3 : 1 }}>{p.name}</button>)}</div></div>
+                        ) : (
+                          <React.Fragment>
+                            {order.subOrders.map((sub, subIndex) => {
+                              const isUnassigned = sub.personIds.length === 0;
+                              const subPriceConverted = sub.price * rate;
+                              const itemSC = subPriceConverted * ((order.serviceCharge || 0) / 100);
+                              const itemTax = (subPriceConverted + itemSC) * ((order.tax || 0) / 100);
+                              const itemTotalWithAdjustments = subPriceConverted + itemSC + itemTax;
+                              return (
+                                <div key={sub.id} className={`mobile-item-card ${isUnassigned ? 'unassigned' : ''}`}>
+                                  <div className="mobile-item-header">
+                                    <div className="flex-col" style={{ gap: '2px' }}>
+                                      <div className="flex-row"><span>{sub.name}</span>{isEditMode && <button className="btn-icon" style={{ color: '#007bff', padding: '2px' }} onClick={() => openModal({ type: 'edit-sub-order', orderId: order.id, id: sub.id })}><EditIcon /></button>}</div>
+                                      {rate !== 1 && <small style={{ color: '#999', fontSize: '0.7rem' }}>Orig: {sub.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</small>}
+                                      <div className="flex-col" style={{ gap: 0, marginTop: '4px' }}><span style={{ fontSize: '0.8rem', opacity: hasAdjustments ? 0.7 : 1, fontWeight: hasAdjustments ? 400 : 700 }}>{subPriceConverted.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>{hasAdjustments && <span style={{ fontWeight: 700, color: 'var(--primary)' }}>{itemTotalWithAdjustments.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>}</div>
+                                      {isUnassigned && <div className="unassigned-warning"><WarningIcon /> Not assigned</div>}
+                                    </div>
+                                    {isEditMode && (
+                                      <div className="flex-row"><button className="btn-icon" style={{ color: '#6c757d', padding: '2px' }} disabled={subIndex === 0} onClick={() => moveSubOrder(order.id, sub.id, 'up')}><UpIcon /></button><button className="btn-icon" style={{ color: '#6c757d', padding: '2px' }} disabled={subIndex === order.subOrders.length - 1} onClick={() => moveSubOrder(order.id, sub.id, 'down')}><DownIcon /></button><button className="btn-icon" style={{ padding: '2px' }} onClick={() => openModal({ type: 'confirm-delete', target: 'sub-order', id: sub.id, orderId: order.id, name: sub.name })}><TrashIcon /></button></div>
+                                    )}
                                   </div>
-                                  {isEditMode && (
-                                    <div className="flex-row"><button className="btn-icon" style={{ color: '#6c757d', padding: '2px' }} disabled={subIndex === 0} onClick={() => moveSubOrder(order.id, sub.id, 'up')}><UpIcon /></button><button className="btn-icon" style={{ color: '#6c757d', padding: '2px' }} disabled={subIndex === order.subOrders.length - 1} onClick={() => moveSubOrder(order.id, sub.id, 'down')}><DownIcon /></button><button className="btn-icon" style={{ padding: '2px' }} onClick={() => openModal({ type: 'confirm-delete', target: 'sub-order', id: sub.id, orderId: order.id, name: sub.name })}><TrashIcon /></button></div>
-                                  )}
+                                  <div className="mobile-person-grid">{state.people.map(p => <button key={p.id} className={`mobile-person-toggle ${sub.personIds.includes(p.id) ? 'active' : ''}`} onClick={() => isEditMode && togglePersonInSubOrder(order.id, sub.id, p.id)} style={{ cursor: isEditMode ? 'pointer' : 'default', opacity: !isEditMode && !sub.personIds.includes(p.id) ? 0.3 : 1 }}>{p.name}</button>)}</div>
                                 </div>
-                                <div className="mobile-person-grid">{state.people.map(p => <button key={p.id} className={`mobile-person-toggle ${sub.personIds.includes(p.id) ? 'active' : ''}`} onClick={() => isEditMode && togglePersonInSubOrder(order.id, sub.id, p.id)} style={{ cursor: isEditMode ? 'pointer' : 'default', opacity: !isEditMode && !sub.personIds.includes(p.id) ? 0.3 : 1 }}>{p.name}</button>)}</div>
-                              </div>
-                            );
-                          })}
-                          {isEditMode && <button className="btn-secondary" style={{ width: '100%', padding: '0.75rem', borderRadius: 0 }} onClick={() => openModal({ type: 'sub-order', orderId: order.id })}>+ Add Item</button>}
-                        </React.Fragment>
-                      )}
-                    </div>
+                              );
+                            })}
+                            {isEditMode && <button className="btn-secondary" style={{ width: '100%', padding: '0.75rem', borderRadius: 0 }} onClick={() => openModal({ type: 'sub-order', orderId: order.id })}>+ Add Item</button>}
+                          </React.Fragment>
+                        )}
+                      </div>
+                    )}
                   </div>
                 );
               })}
