@@ -5,6 +5,8 @@ import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { BillState, Person, Order, SubOrder } from '@/types';
 import { decodeState, encodeState } from '@/utils/serialization';
 import { calculateTotals } from '@/utils/calculations';
+import { generatePromptPayPayload } from '@/utils/promptpay';
+import { QRCodeSVG } from 'qrcode.react';
 
 const initialState: BillState = {
   people: [],
@@ -21,6 +23,7 @@ type ModalState =
   | { type: 'set-password' }
   | { type: 'input-password' }
   | { type: 'paste-data' }
+  | { type: 'promptpay' }
   | { type: 'confirm-delete', target: 'person' | 'order' | 'sub-order', id: string, orderId?: string, name: string }
   | null;
 
@@ -111,6 +114,16 @@ const PasteIcon = (props: React.SVGProps<SVGSVGElement>) => (
   </svg>
 );
 
+const QrIcon = (props: React.SVGProps<SVGSVGElement>) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <rect x="3" y="3" width="7" height="7" />
+    <rect x="14" y="3" width="7" height="7" />
+    <rect x="14" y="14" width="7" height="7" />
+    <rect x="3" y="14" width="7" height="7" />
+    <path d="M7 7h.01M17 7h.01M17 17h.01M7 17h.01" />
+  </svg>
+);
+
 export default function Home() {
   return (
     <Suspense fallback={<main style={{ maxWidth: '95%', textAlign: 'center', padding: '4rem' }}>Loading...</main>}>
@@ -136,6 +149,8 @@ function BillApp() {
   const [modalOrderType, setModalOrderType] = useState<'multiple' | 'single'>('multiple');
   const [modalPasswordInput, setModalPasswordInput] = useState('');
   const [modalPasteInput, setModalPasteInput] = useState('');
+  const [modalPromptPayInput, setModalPromptPayInput] = useState('');
+  const [modalPromptPayNameInput, setModalPromptPayNameInput] = useState('');
 
   const modalInputRef = useRef<HTMLInputElement>(null);
   const modalTextareaRef = useRef<HTMLTextAreaElement>(null);
@@ -191,6 +206,9 @@ function BillApp() {
       setModalTax('');
       setModalServiceCharge('');
       setModalExchangeRate('');
+    } else if (m?.type === 'promptpay') {
+      setModalPromptPayInput(state.promptPayId || '');
+      setModalPromptPayNameInput(state.promptPayName || '');
     } else {
       setModalName('');
       setModalPrice('');
@@ -200,7 +218,7 @@ function BillApp() {
       setModalOrderType('multiple');
     }
     setModal(m);
-  }, [state.orders]);
+  }, [state.orders, state.promptPayId, state.promptPayName]);
 
   const closeModal = useCallback(() => {
     setModal(null);
@@ -211,6 +229,8 @@ function BillApp() {
     setModalExchangeRate('');
     setModalPasswordInput('');
     setModalPasteInput('');
+    setModalPromptPayInput('');
+    setModalPromptPayNameInput('');
     setShowPassword(false);
   }, []);
 
@@ -218,7 +238,7 @@ function BillApp() {
 
   const handleCopyData = () => {
     const dataToCopy = { ...state };
-    delete dataToCopy.password; // Security: don't include password in raw copy
+    delete dataToCopy.password;
     dataToCopy.isEditMode = true;
     navigator.clipboard.writeText(JSON.stringify(dataToCopy, null, 2));
     alert('Bill data copied to clipboard!');
@@ -228,12 +248,11 @@ function BillApp() {
     try {
       const parsed = JSON.parse(jsonStr);
       if (!parsed.people || !parsed.orders) throw new Error('Invalid bill data format');
-      // Ensure IDs are unique if we're "merging" but here we just replace for duplication
       setState({
         ...parsed,
         isEditMode: true
       });
-      setIsUnlocked(true); // Since we just pasted it in edit mode
+      setIsUnlocked(true);
       closeModal();
       alert('Bill data parsed successfully!');
     } catch (e) {
@@ -420,6 +439,13 @@ function BillApp() {
       }
     } else if (modal.type === 'paste-data') {
       handlePasteData(modalPasteInput);
+    } else if (modal.type === 'promptpay') {
+      setState(prev => ({ 
+        ...prev, 
+        promptPayId: modalPromptPayInput.trim(),
+        promptPayName: modalPromptPayNameInput.trim()
+      }));
+      closeModal();
     } else if (modal.type === 'confirm-delete') {
       if (modal.target === 'person') removePerson(modal.id);
       else if (modal.target === 'order') removeOrder(modal.id);
@@ -427,7 +453,7 @@ function BillApp() {
     }
   };
 
-  const isSubmitDisabled = modal?.type !== 'confirm-delete' && modal?.type !== 'input-password' && modal?.type !== 'set-password' && modal?.type !== 'paste-data' && (
+  const isSubmitDisabled = modal?.type !== 'confirm-delete' && modal?.type !== 'input-password' && modal?.type !== 'set-password' && modal?.type !== 'paste-data' && modal?.type !== 'promptpay' && (
     !modalName.trim() || ((modal?.type === 'sub-order' || modal?.type === 'edit-sub-order' || (modal?.type.endsWith('order') && modalOrderType === 'single')) && !modalPrice.trim())
   );
 
@@ -461,6 +487,7 @@ function BillApp() {
                 <React.Fragment>
                   <div style={{ width: '1px', height: '24px', background: 'var(--border)', margin: '0 4px' }}></div>
                   <button className="btn-icon" style={{ color: 'var(--secondary)' }} onClick={() => openModal({ type: 'set-password' })} title={state.password ? "Change or remove password" : "Set password"}><KeyIcon /></button>
+                  <button className="btn-icon" style={{ color: 'var(--secondary)' }} onClick={() => openModal({ type: 'promptpay' })} title="Set PromptPay ID"><QrIcon /></button>
                   <button className="btn-icon" style={{ color: 'var(--secondary)' }} onClick={() => openModal({ type: 'paste-data' })} title="Paste bill data (JSON)"><PasteIcon /></button>
                 </React.Fragment>
               )}
@@ -549,6 +576,38 @@ function BillApp() {
                       <div className="modal-actions">
                         <button type="button" className="btn-secondary" onClick={closeModal}>Cancel</button>
                         <button type="submit" className="btn-primary" disabled={!modalPasteInput.trim()}>Import Data</button>
+                      </div>
+                    </form>
+                  </React.Fragment>
+                ) : modal.type === 'promptpay' ? (
+                  <React.Fragment>
+                    <h3>PromptPay Info</h3>
+                    <p style={{ fontSize: '0.85rem', color: 'var(--secondary)', marginBottom: '1rem' }}>Set your payment info to show QR codes in the summary.</p>
+                    <form onSubmit={handleModalSubmit}>
+                      <div className="flex-col">
+                        <div>
+                          <label>Display Name (Optional)</label>
+                          <input 
+                            type="text" 
+                            value={modalPromptPayNameInput} 
+                            onChange={(e) => setModalPromptPayNameInput(e.target.value)} 
+                            placeholder="e.g. Somchai S." 
+                          />
+                        </div>
+                        <div>
+                          <label>Phone or National ID</label>
+                          <input 
+                            ref={modalInputRef}
+                            type="text" 
+                            value={modalPromptPayInput} 
+                            onChange={(e) => setModalPromptPayInput(e.target.value)} 
+                            placeholder="e.g. 0812345678" 
+                          />
+                        </div>
+                      </div>
+                      <div className="modal-actions">
+                        <button type="button" className="btn-secondary" onClick={closeModal}>Cancel</button>
+                        <button type="submit" className="btn-primary">Save Info</button>
                       </div>
                     </form>
                   </React.Fragment>
@@ -850,9 +909,12 @@ function BillApp() {
                     if (itemsForPerson.length > 0) { groupedItems.push({ orderName: o.name, tax: o.tax || 0, sc: o.serviceCharge || 0, rate: o.exchangeRate || 1, items: itemsForPerson }); }
                   }
                 });
+                const personTotal = totals.personTotals[p.id];
+                const ppPayload = state.promptPayId && personTotal > 0 ? generatePromptPayPayload(state.promptPayId, personTotal) : null;
+
                 return (
                   <details key={p.id} className="person-summary-details">
-                    <summary><span>{p.name}</span><div className="flex-row"><span>{totals.personTotals[p.id].toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span><ChevronDownIcon /></div></summary>
+                    <summary><span>{p.name}</span><div className="flex-row"><span>{personTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span><ChevronDownIcon /></div></summary>
                     <div className="person-summary-content">
                       {groupedItems.length === 0 ? (<p style={{ color: '#999', fontStyle: 'italic' }}>No items assigned.</p>) : (
                         <React.Fragment>
@@ -873,7 +935,21 @@ function BillApp() {
                               </div>
                             );
                           })}
-                          <div className="summary-item-subtotal summary-item-row" style={{ borderTop: '2px solid var(--border)', marginTop: '1rem', paddingTop: '1rem' }}><span>Total</span><span className="cell-price">{totals.personTotals[p.id].toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
+                          <div className="summary-item-subtotal summary-item-row" style={{ borderTop: '2px solid var(--border)', marginTop: '1rem', paddingTop: '1rem' }}><span>Total</span><span className="cell-price">{personTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
+                          
+                          {ppPayload && (
+                            <div className="flex-col" style={{ alignItems: 'center', marginTop: '1.5rem', background: 'white', padding: '1rem', borderRadius: '12px', border: '1px solid #eee' }}>
+                              <div style={{ color: '#003d6b', fontWeight: 800, fontSize: '0.9rem', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <img src="https://upload.wikimedia.org/wikipedia/commons/c/c5/PromptPay-logo.png" alt="PromptPay" style={{ height: '16px' }} />
+                                PromptPay
+                              </div>
+                              {state.promptPayName && (
+                                <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--foreground)', marginBottom: '0.5rem' }}>{state.promptPayName}</div>
+                              )}
+                              <QRCodeSVG value={ppPayload} size={160} level="M" includeMargin={true} />
+                              <div style={{ fontSize: '0.75rem', color: 'var(--secondary)', marginTop: '0.5rem' }}>Scan to pay {personTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} THB</div>
+                            </div>
+                          )}
                         </React.Fragment>
                       )}
                     </div>

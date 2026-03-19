@@ -27,4 +27,6 @@ export interface BillState {
   orders: Order[];
   password?: string; // Optional password for Edit Mode
   isEditMode?: boolean; // Save current mode to URL
+  promptPayId?: string; // PromptPay ID (Phone or ID Card)
+  promptPayName?: string; // Display name for PromptPay
 }
